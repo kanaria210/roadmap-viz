@@ -3,7 +3,7 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-    apiKey: "AIzaSyCd2pkQmQr7D8yNEOVmFp8Q3dRRHeJvCqo",
+    apiKey: "AIzaSyCd2pk9mQr7D8yNEOVmFp8Q3dRRHeJvCqo",
     authDomain: "rode-map-347ad.firebaseapp.com",
     projectId: "rode-map-347ad",
     storageBucket: "rode-map-347ad.firebasestorage.app",
