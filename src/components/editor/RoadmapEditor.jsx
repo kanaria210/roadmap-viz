@@ -57,7 +57,7 @@ function RoadmapEditorContent({ user }) {
         const unsubscribe = firestoreOnSnapshot(doc(db, 'roadmaps', roadmapId), (doc) => {
             if (doc.exists()) {
                 const data = doc.data();
-                setTitle(data.title);
+                setTitle(data.title || ''); // Ensure not undefined
                 setGoal(data.goal);
                 setSteps(data.steps || []);
             }
@@ -69,6 +69,16 @@ function RoadmapEditorContent({ user }) {
         setSteps(newSteps);
         if (roadmapId) {
             await setDoc(doc(db, 'roadmaps', roadmapId), { steps: newSteps }, { merge: true });
+        }
+    };
+
+    const handleTitleChange = (e) => {
+        setTitle(e.target.value);
+    };
+
+    const handleTitleBlur = () => {
+        if (roadmapId) {
+            setDoc(doc(db, 'roadmaps', roadmapId), { title: title }, { merge: true });
         }
     };
 
@@ -166,8 +176,24 @@ function RoadmapEditorContent({ user }) {
 
             <div className="app-main-content">
                 <div className="app-container">
-                    <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                        <h1>{title || "Untitled Roadmap"}</h1>
+                    <header className="app-header" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}>
+                        <input
+                            type="text"
+                            value={title}
+                            onChange={handleTitleChange}
+                            onBlur={handleTitleBlur}
+                            placeholder="Untitled Roadmap"
+                            style={{
+                                fontSize: '2em',
+                                fontWeight: 'bold',
+                                textAlign: 'center',
+                                border: 'none',
+                                background: 'transparent',
+                                width: '100%',
+                                outline: 'none',
+                                color: '#333'
+                            }}
+                        />
                     </header>
 
                     <div className="step-input-container">
@@ -175,7 +201,10 @@ function RoadmapEditorContent({ user }) {
                             type="text"
                             value={newStepText}
                             onChange={(e) => setNewStepText(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAddStep()}
+                            onKeyDown={(e) => {
+                                if (e.nativeEvent.isComposing || e.key !== 'Enter') return;
+                                handleAddStep();
+                            }}
                             placeholder="新しいステップを入力..."
                             className="step-input"
                         />
