@@ -1,5 +1,8 @@
 import { useState } from 'react';
+import { useSortable, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import '../../styles/App.css';
+
 
 const COLOR_PALETTE = [
     { color: '#ffffff', label: 'White' },
@@ -22,11 +25,28 @@ function StepItem({
     onToggleExpand,
     onColorChange,
     level = 0,
-    numbering = ""
+    numbering = "",
+    isOverlay = false
 }) {
     const [isAddingSubStep, setIsAddingSubStep] = useState(false);
     const [subStepText, setSubStepText] = useState('');
     const [showColorPalette, setShowColorPalette] = useState(false);
+
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging
+    } = useSortable({ id: step.id, disabled: isOverlay });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        marginLeft: level > 0 ? 'var(--spacing-xl)' : '0'
+    };
 
     const currentNumbering = numbering ? `${numbering}.${index + 1}` : `${index + 1}`;
     const hasChildren = step.children && step.children.length > 0;
@@ -45,18 +65,30 @@ function StepItem({
         }
     };
 
-    const stepStyle = {
+    const stepItemStyle = {
         backgroundColor: step.color || '#ffffff',
-        borderLeft: 'none' // Remove previous border style
+        borderLeft: 'none'
     };
 
     return (
         <div
+            ref={setNodeRef}
+            style={style}
             id={`step-${step.id}`}
             className="step-wrapper"
-            style={{ marginLeft: level > 0 ? 'var(--spacing-xl)' : '0' }}
         >
-            <div className={`step-item ${step.completed ? 'completed' : ''}`} style={stepStyle}>
+            <div className={`step-item ${step.completed ? 'completed' : ''}`} style={stepItemStyle}>
+
+                {/* Drag Handle */}
+                <div
+                    className="drag-handle"
+                    {...attributes}
+                    {...listeners}
+                    title="Drag to reorder"
+                >
+                    ⋮⋮
+                </div>
+
                 <div
                     className="step-marker"
                     onClick={() => onToggle(step.id)}
@@ -90,24 +122,12 @@ function StepItem({
                             </button>
                         )}
 
+                        {/* Deprecated controls: Reorder buttons are kept as fallback or usage choice */}
+                        {/* 
                         <div className="reorder-buttons">
-                            <button
-                                className="action-button"
-                                onClick={() => onReorder(step.id, 'up')}
-                                disabled={index === 0}
-                                title="Move up"
-                            >
-                                ↑
-                            </button>
-                            <button
-                                className="action-button"
-                                onClick={() => onReorder(step.id, 'down')}
-                                disabled={index === total - 1}
-                                title="Move down"
-                            >
-                                ↓
-                            </button>
+                            ... (Keep them if user wants both methods, generally safe to keep)
                         </div>
+                        */}
 
                         <div className="color-palette-container">
                             <button
@@ -171,22 +191,50 @@ function StepItem({
 
             {step.expanded && hasChildren && (
                 <div className="sub-steps-list">
-                    {step.children.map((child, idx) => (
-                        <StepItem
-                            key={child.id}
-                            step={child}
-                            index={idx}
-                            total={step.children.length}
-                            onToggle={onToggle}
-                            onDelete={onDelete}
-                            onAddSubStep={onAddSubStep}
-                            onReorder={onReorder}
-                            onToggleExpand={onToggleExpand}
-                            onColorChange={onColorChange}
-                            level={level + 1}
-                            numbering={currentNumbering}
-                        />
-                    ))}
+                    {isOverlay ? (
+                        step.children.map((child, idx) => (
+                            <StepItem
+                                key={child.id}
+                                step={child}
+                                index={idx}
+                                total={step.children.length}
+                                onToggle={onToggle}
+                                onDelete={onDelete}
+                                onAddSubStep={onAddSubStep}
+                                onDeleteSubStep={onDeleteSubStep}
+                                onReorder={onReorder}
+                                onToggleExpand={onToggleExpand}
+                                onColorChange={onColorChange}
+                                level={level + 1}
+                                numbering={currentNumbering}
+                                isOverlay={true}
+                            />
+                        ))
+                    ) : (
+                        <SortableContext
+                            items={step.children.map(child => child.id)}
+                            strategy={verticalListSortingStrategy}
+                        >
+                            {step.children.map((child, idx) => (
+                                <StepItem
+                                    key={child.id}
+                                    step={child}
+                                    index={idx}
+                                    total={step.children.length}
+                                    onToggle={onToggle}
+                                    onDelete={onDelete}
+                                    onAddSubStep={onAddSubStep}
+                                    onDeleteSubStep={onDeleteSubStep}
+                                    onReorder={onReorder}
+                                    onToggleExpand={onToggleExpand}
+                                    onColorChange={onColorChange}
+                                    level={level + 1}
+                                    numbering={currentNumbering}
+                                    isOverlay={false}
+                                />
+                            ))}
+                        </SortableContext>
+                    )}
                 </div>
             )}
         </div>

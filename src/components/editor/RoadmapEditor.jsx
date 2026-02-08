@@ -1,249 +1,163 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot as firestoreOnSnapshot, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { DndContext, DragOverlay, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import StepItem from '../step-item/StepItem';
 import Sidebar from '../sidebar/Sidebar';
-import '../../styles/global.css'; // Ensure styles are imported
+import { findItemDeep, removeItemDeep, insertItemDeep } from '../../utils/dnd-utils';
+import '../../styles/global.css';
 import '../../styles/App.css';
 
-function RoadmapEditor({ user }) {
+class ErrorBoundary extends React.Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false, error: null, errorInfo: null };
+    }
+
+    static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error, errorInfo) {
+        console.error("Uncaught error:", error, errorInfo);
+        this.setState({ errorInfo });
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{ padding: 20, background: '#fee', color: '#333' }}>
+                    <h1>Something went wrong.</h1>
+                    <details style={{ whiteSpace: 'pre-wrap' }}>
+                        {this.state.error && this.state.error.toString()}
+                        <br />
+                        {this.state.errorInfo && this.state.errorInfo.componentStack}
+                    </details>
+                </div>
+            );
+        }
+
+        return this.props.children;
+    }
+}
+
+function RoadmapEditorContent({ user }) {
     const { roadmapId } = useParams();
     const navigate = useNavigate();
-
-    // Data states
+    const [title, setTitle] = useState('');
     const [goal, setGoal] = useState('');
     const [steps, setSteps] = useState([]);
-    const [newStep, setNewStep] = useState('');
-    const [isDataLoaded, setIsDataLoaded] = useState(false);
-    const [roadmapTitle, setRoadmapTitle] = useState('無題のロードマップ');
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const [newStepText, setNewStepText] = useState('');
 
-    // 1. Sync with Firestore (Read)
     useEffect(() => {
-        if (!user || !roadmapId) return;
-
-        const roadmapDocRef = doc(db, 'users', user.uid, 'roadmaps', roadmapId);
-        const unsubscribe = onSnapshot(roadmapDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setGoal(data.goal || '');
+        if (!roadmapId) return;
+        const unsubscribe = firestoreOnSnapshot(doc(db, 'roadmaps', roadmapId), (doc) => {
+            if (doc.exists()) {
+                const data = doc.data();
+                setTitle(data.title);
+                setGoal(data.goal);
                 setSteps(data.steps || []);
-                setRoadmapTitle(data.title || '無題のロードマップ');
-            } else {
-                // Document doesn't exist? Maybe deleted.
-                // For now, let's just show empty or redirect?
-                // Let's assume valid ID for now.
             }
-            setIsDataLoaded(true);
-        }, (error) => {
-            console.error("Error reading data:", error);
         });
-
         return () => unsubscribe();
-    }, [user, roadmapId]);
+    }, [roadmapId]);
 
-    // 2. Sync to Firestore (Write)
-    const saveToCloud = async (newGoal, newSteps, newTitle) => {
-        if (!user || !roadmapId) return;
-        try {
-            await setDoc(doc(db, 'users', user.uid, 'roadmaps', roadmapId), {
-                goal: newGoal !== undefined ? newGoal : goal,
-                steps: newSteps !== undefined ? newSteps : steps,
-                title: newTitle !== undefined ? newTitle : roadmapTitle,
-                lastUpdated: new Date()
-            }, { merge: true });
-        } catch (e) {
-            console.error("Error saving to cloud:", e);
+    const updateSteps = async (newSteps) => {
+        setSteps(newSteps);
+        if (roadmapId) {
+            await setDoc(doc(db, 'roadmaps', roadmapId), { steps: newSteps }, { merge: true });
         }
     };
 
-    // Wrapper for state updates
-    const updateGoal = (val) => {
-        setGoal(val);
-        saveToCloud(val, undefined, undefined);
-    };
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
 
-    const updateSteps = (newSteps) => {
-        setSteps(newSteps);
-        saveToCloud(undefined, newSteps, undefined);
-    };
+    const [activeId, setActiveId] = useState(null);
 
-    // Helper functions (addStep, toggleStep, etc.) - copied from App.jsx
-    const addStep = () => {
-        if (!newStep.trim()) return;
-        const newSteps = [...steps, {
-            id: Date.now(),
-            text: newStep,
+    const handleAddStep = () => {
+        if (!newStepText.trim()) return;
+        const newStep = {
+            id: Date.now().toString(),
+            text: newStepText,
             completed: false,
             expanded: true,
-            color: '#e2e8f0',
             children: []
-        }];
-        updateSteps(newSteps);
-        setNewStep('');
-    };
-
-    const addSubStep = (parentId, text) => {
-        const addRecursive = (items) => {
-            return items.map(item => {
-                if (item.id === parentId) {
-                    return {
-                        ...item,
-                        expanded: true,
-                        children: [...(item.children || []), {
-                            id: Date.now(),
-                            text: text,
-                            completed: false,
-                            expanded: true,
-                            color: item.color,
-                            children: []
-                        }]
-                    };
-                }
-                if (item.children) {
-                    return { ...item, children: addRecursive(item.children) };
-                }
-                return item;
-            });
         };
-        updateSteps(addRecursive(steps));
+        const newSteps = [...steps, newStep];
+        updateSteps(newSteps);
+        setNewStepText('');
     };
 
     const toggleStep = (id) => {
-        const toggleRecursive = (items) => {
-            return items.map(item => {
-                if (item.id === id) {
-                    return { ...item, completed: !item.completed };
-                }
-                if (item.children) {
-                    return { ...item, children: toggleRecursive(item.children) };
-                }
-                return item;
-            });
-        };
-        updateSteps(toggleRecursive(steps));
-    };
-
-    const toggleExpand = (id) => {
-        const collapseAllChildren = (items) => {
-            return items.map(item => ({
-                ...item,
-                expanded: false,
-                children: item.children ? collapseAllChildren(item.children) : []
-            }));
-        };
-
-        const toggleRecursive = (items) => {
-            return items.map(item => {
-                if (item.id === id) {
-                    const newExpandedState = !item.expanded;
-                    if (!newExpandedState && item.children) {
-                        return {
-                            ...item,
-                            expanded: newExpandedState,
-                            children: collapseAllChildren(item.children)
-                        };
-                    }
-                    return { ...item, expanded: newExpandedState };
-                }
-                if (item.children) {
-                    return { ...item, children: toggleRecursive(item.children) };
-                }
-                return item;
-            });
-        };
-        updateSteps(toggleRecursive(steps));
+        const toggleDeep = (items) => items.map(item => {
+            if (item.id === id) return { ...item, completed: !item.completed };
+            if (item.children) return { ...item, children: toggleDeep(item.children) };
+            return item;
+        });
+        updateSteps(toggleDeep(steps));
     };
 
     const deleteStep = (id) => {
-        const deleteRecursive = (items) => {
-            return items
-                .filter(item => item.id !== id)
-                .map(item => {
-                    if (item.children) {
-                        return { ...item, children: deleteRecursive(item.children) };
-                    }
-                    return item;
-                });
-        };
-        updateSteps(deleteRecursive(steps));
+        const newSteps = removeItemDeep(steps, id);
+        updateSteps(newSteps);
     };
 
-    const reorderStep = (id, direction) => {
-        const reorderRecursive = (items) => {
-            const index = items.findIndex(item => item.id === id);
-            if (index !== -1) {
-                const newItems = [...items];
-                if (direction === 'up' && index > 0) {
-                    [newItems[index], newItems[index - 1]] = [newItems[index - 1], newItems[index]];
-                    return newItems;
-                }
-                if (direction === 'down' && index < newItems.length - 1) {
-                    [newItems[index], newItems[index + 1]] = [newItems[index + 1], newItems[index]];
-                    return newItems;
-                }
-                return items;
-            }
-            return items.map(item => {
-                if (item.children) {
-                    return { ...item, children: reorderRecursive(item.children) };
-                }
-                return item;
-            });
-        };
-        updateSteps(reorderRecursive(steps));
+    const addSubStep = (parentId, text) => {
+        const newSubStep = { id: Date.now().toString(), text, completed: false, children: [] };
+        const newSteps = insertItemDeep(steps, parentId, 'inside', newSubStep);
+        updateSteps(newSteps);
     };
 
-    const updateStepColor = (id, newColor) => {
-        const updateColorRecursive = (items, applyToChildren = false) => {
-            return items.map(item => {
-                if (item.id === id) {
-                    return {
-                        ...item,
-                        color: newColor,
-                        children: item.children ? updateColorRecursive(item.children, true) : []
-                    };
-                }
-                if (applyToChildren) {
-                    return {
-                        ...item,
-                        color: newColor,
-                        children: item.children ? updateColorRecursive(item.children, true) : []
-                    };
-                }
-                if (item.children) {
-                    return { ...item, children: updateColorRecursive(item.children, false) };
-                }
-                return item;
-            });
-        };
-        updateSteps(updateColorRecursive(steps));
+    const reorderStep = () => { };
+
+    const toggleExpand = (id) => {
+        const toggleExpandDeep = (items) => items.map(item => {
+            if (item.id === id) return { ...item, expanded: !item.expanded };
+            if (item.children) return { ...item, children: toggleExpandDeep(item.children) };
+            return item;
+        });
+        updateSteps(toggleExpandDeep(steps));
     };
 
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const updateStepColor = (id, color) => {
+        const setDeep = (items) => items.map(item => {
+            if (item.id === id) return { ...item, color };
+            if (item.children) return { ...item, children: setDeep(item.children) };
+            return item;
+        });
+        updateSteps(setDeep(steps));
+    };
 
-    // ... (existing code)
+    const handleDragStart = (event) => {
+        setActiveId(event.active.id);
+    };
 
-    if (!isDataLoaded) {
-        return <div style={{ display: 'flex', justifyContent: 'center', marginTop: '50px' }}>Loading Roadmap...</div>;
-    }
+    const handleDragEnd = (event) => {
+        const { active, over } = event;
+        setActiveId(null);
+
+        if (!over) return;
+        if (active.id === over.id) return;
+
+        const activeItem = findItemDeep(steps, active.id);
+        if (!activeItem) return;
+
+        let position = 'after';
+        const newSteps = removeItemDeep(steps, active.id);
+        const finalSteps = insertItemDeep(newSteps, over.id, position, activeItem);
+
+        updateSteps(finalSteps);
+    };
 
     return (
         <div className="app-wrapper">
-            {/* Mobile Overlay */}
-            <div
-                className={`sidebar-overlay ${isSidebarOpen ? 'visible' : ''}`}
-                onClick={() => setIsSidebarOpen(false)}
-            />
-
-            {/* Mobile Menu Button */}
-            <button
-                className="mobile-menu-button"
-                onClick={() => setIsSidebarOpen(true)}
-            >
-                ☰
-            </button>
-
             <Sidebar
                 steps={steps}
                 isOpen={isSidebarOpen}
@@ -253,86 +167,85 @@ function RoadmapEditor({ user }) {
             <div className="app-main-content">
                 <div className="app-container">
                     <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
-                            {/* Back Button */}
-                            <div style={{ alignSelf: 'flex-start' }}>
-                                <button
-                                    onClick={() => navigate('/')}
-                                    style={{
-                                        background: 'none',
-                                        border: 'none',
-                                        color: '#666',
-                                        cursor: 'pointer',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '5px'
-                                    }}
-                                >
-                                    ← 一覧に戻る
-                                </button>
-                            </div>
-
-                            <input
-                                type="text"
-                                placeholder="無題のロードマップ"
-                                className="title-input"
-                                value={roadmapTitle}
-                                onChange={(e) => {
-                                    setRoadmapTitle(e.target.value);
-                                    saveToCloud(undefined, undefined, e.target.value);
-                                }}
-                                style={{ fontSize: '1.5rem', borderBottom: '1px solid transparent' }}
-                            />
-                            <input
-                                type="text"
-                                placeholder="あなたの目標を入力..."
-                                className="title-input"
-                                value={goal}
-                                onChange={(e) => updateGoal(e.target.value)}
-                            />
-                        </div>
+                        <h1>{title || "Untitled Roadmap"}</h1>
                     </header>
 
                     <div className="step-input-container">
                         <input
                             type="text"
-                            placeholder="次のステップを入力..."
-                            className="step-input-field"
-                            value={newStep}
-                            onChange={(e) => setNewStep(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                                    e.preventDefault();
-                                    addStep();
-                                }
-                            }}
+                            value={newStepText}
+                            onChange={(e) => setNewStepText(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddStep()}
+                            placeholder="新しいステップを入力..."
+                            className="step-input"
                         />
-                        <button className="add-button" onClick={addStep}>
+                        <button onClick={handleAddStep} className="add-button">
                             追加
                         </button>
                     </div>
 
-                    <div className="step-list">
-                        {steps.map((step, index) => (
-                            <StepItem
-                                key={step.id}
-                                step={step}
-                                index={index}
-                                total={steps.length}
-                                onToggle={toggleStep}
-                                onDelete={deleteStep}
-                                onAddSubStep={addSubStep}
-                                onReorder={reorderStep}
-                                onToggleExpand={toggleExpand}
-                                onColorChange={updateStepColor}
-                                level={0}
-                                numbering=""
-                            />
-                        ))}
-                    </div>
+                    <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragStart={handleDragStart}
+                        onDragEnd={handleDragEnd}
+                    >
+                        <SortableContext
+                            items={steps.map(s => s.id)}
+                            strategy={verticalListSortingStrategy}
+                        >
+                            <div className="step-list">
+                                {steps.map((step, index) => (
+                                    <StepItem
+                                        key={step.id}
+                                        step={step}
+                                        index={index}
+                                        total={steps.length}
+                                        onToggle={toggleStep}
+                                        onDelete={deleteStep}
+                                        onAddSubStep={addSubStep}
+                                        onReorder={reorderStep}
+                                        onToggleExpand={toggleExpand}
+                                        onColorChange={updateStepColor}
+                                        level={0}
+                                        numbering=""
+                                    />
+                                ))}
+                            </div>
+                        </SortableContext>
+
+                        <DragOverlay>
+                            {activeId ? (
+                                <StepItem
+                                    step={findItemDeep(steps, activeId)}
+                                    // Pass dummy props for overlay render
+                                    index={0}
+                                    total={1}
+                                    onToggle={() => { }}
+                                    onDelete={() => { }}
+                                    onAddSubStep={() => { }}
+                                    onReorder={() => { }}
+                                    onToggleExpand={() => { }}
+                                    onColorChange={() => { }}
+                                    level={0}
+                                    numbering=""
+                                    isOverlay={true}
+                                />
+                            ) : null}
+                        </DragOverlay>
+                    </DndContext>
+
                 </div>
             </div>
         </div>
+    );
+}
+
+function RoadmapEditor(props) {
+    return (
+        <ErrorBoundary>
+            <RoadmapEditorContent {...props} />
+        </ErrorBoundary>
     );
 }
 

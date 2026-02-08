@@ -228,6 +228,31 @@
     background: rgba(239, 68, 68, 0.1);
 }
 
+/* Drag Handle Styles */
+.drag-handle {
+    cursor: grab;
+    color: var(--color-text-secondary);
+    padding: 2px 4px;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+    user-select: none;
+}
+
+.drag-handle:hover {
+    opacity: 1;
+}
+
+.step-item:hover .drag-handle {
+    opacity: 0.7;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
 /* Sub-step Input */
 .sub-step-input {
     display: flex;
@@ -399,7 +424,8 @@
     }
 
     .mobile-menu-button {
-        display: block !important; /* Force show on mobile */
+        display: block !important;
+        /* Force show on mobile */
         position: absolute;
         top: 20px;
         left: 20px;
@@ -412,9 +438,10 @@
         font-size: 1.2rem;
         box-shadow: var(--shadow-sm);
     }
-    
+
     .app-header {
-        margin-top: 40px; /* Space for menu button */
+        margin-top: 40px;
+        /* Space for menu button */
     }
 }
 
