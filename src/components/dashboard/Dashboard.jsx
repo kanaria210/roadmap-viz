@@ -18,10 +18,15 @@ function Dashboard({ user }) {
         const q = query(roadmapsRef, orderBy('createdAt', 'desc'));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            const maps = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-            }));
+            console.log("Dashboard Snapshot Update:", snapshot.size, "docs");
+            const maps = snapshot.docs.map(doc => {
+                const data = doc.data();
+                console.log(" - Doc:", doc.id, data.title, "Created:", data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt);
+                return {
+                    id: doc.id,
+                    ...data
+                };
+            });
             setRoadmaps(maps);
             setLoading(false);
         }, (error) => {
