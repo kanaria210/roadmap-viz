@@ -54,21 +54,38 @@ function RoadmapEditorContent({ user }) {
 
     useEffect(() => {
         if (!roadmapId) return;
-        const unsubscribe = firestoreOnSnapshot(doc(db, 'roadmaps', roadmapId), (doc) => {
+
+        // 1. Fetch Metadata (Title, Goal)
+        const unsubscribeMetadata = firestoreOnSnapshot(doc(db, 'users', user.uid, 'roadmaps', roadmapId), (doc) => {
             if (doc.exists()) {
                 const data = doc.data();
-                setTitle(data.title || ''); // Ensure not undefined
+                setTitle(data.title || '');
                 setGoal(data.goal);
-                setSteps(data.steps || []);
+                // Note: steps are no longer here
             }
         });
-        return () => unsubscribe();
-    }, [roadmapId]);
+
+        // 2. Fetch Steps (Separate Collection)
+        const unsubscribeSteps = firestoreOnSnapshot(doc(db, 'users', user.uid, 'roadmap_steps', roadmapId), (doc) => {
+            if (doc.exists()) {
+                const data = doc.data();
+                setSteps(data.steps || []);
+            } else {
+                setSteps([]); // Initialize if empty
+            }
+        });
+
+        return () => {
+            unsubscribeMetadata();
+            unsubscribeSteps();
+        };
+    }, [roadmapId, user]);
 
     const updateSteps = async (newSteps) => {
         setSteps(newSteps);
         if (roadmapId) {
-            await setDoc(doc(db, 'roadmaps', roadmapId), { steps: newSteps }, { merge: true });
+            // Save ONLY steps to the new collection
+            await setDoc(doc(db, 'users', user.uid, 'roadmap_steps', roadmapId), { steps: newSteps }, { merge: true });
         }
     };
 
@@ -78,7 +95,7 @@ function RoadmapEditorContent({ user }) {
 
     const handleTitleBlur = () => {
         if (roadmapId) {
-            setDoc(doc(db, 'roadmaps', roadmapId), { title: title }, { merge: true });
+            setDoc(doc(db, 'users', user.uid, 'roadmaps', roadmapId), { title: title }, { merge: true });
         }
     };
 
@@ -176,7 +193,24 @@ function RoadmapEditorContent({ user }) {
 
             <div className="app-main-content">
                 <div className="app-container">
-                    <header className="app-header" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}>
+                    <header className="app-header" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px', position: 'relative' }}>
+                        <button
+                            onClick={() => navigate('/')}
+                            style={{
+                                position: 'absolute',
+                                left: 0,
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: '1.2em',
+                                color: '#666',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '5px'
+                            }}
+                        >
+                            ← <span style={{ fontSize: '0.8em' }}>Top</span>
+                        </button>
                         <input
                             type="text"
                             value={title}
