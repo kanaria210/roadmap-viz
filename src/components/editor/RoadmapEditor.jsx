@@ -220,13 +220,35 @@ function RoadmapEditor({ user }) {
         updateSteps(updateColorRecursive(steps));
     };
 
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+    // ... (existing code)
+
     if (!isDataLoaded) {
         return <div style={{ display: 'flex', justifyContent: 'center', marginTop: '50px' }}>Loading Roadmap...</div>;
     }
 
     return (
         <div className="app-wrapper">
-            <Sidebar steps={steps} />
+            {/* Mobile Overlay */}
+            <div
+                className={`sidebar-overlay ${isSidebarOpen ? 'visible' : ''}`}
+                onClick={() => setIsSidebarOpen(false)}
+            />
+
+            {/* Mobile Menu Button */}
+            <button
+                className="mobile-menu-button"
+                onClick={() => setIsSidebarOpen(true)}
+            >
+                ☰
+            </button>
+
+            <Sidebar
+                steps={steps}
+                isOpen={isSidebarOpen}
+                onClose={() => setIsSidebarOpen(false)}
+            />
 
             <div className="app-main-content">
                 <div className="app-container">

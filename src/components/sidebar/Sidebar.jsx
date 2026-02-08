@@ -54,16 +54,17 @@ function SidebarItem({ step, numbering, onScroll }) {
     );
 }
 
-export default function Sidebar({ steps }) {
+export default function Sidebar({ steps, isOpen, onClose }) {
     const handleScroll = (id) => {
         const element = document.getElementById(`step-${id}`);
         if (element) {
             element.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+        if (onClose) onClose();
     };
 
     return (
-        <div className="sidebar">
+        <div className={`sidebar ${isOpen ? 'open' : ''}`}>
             <h3 className="sidebar-title">目次</h3>
             <div className="sidebar-content">
                 {steps.map((step, index) => (
